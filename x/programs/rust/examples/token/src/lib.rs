@@ -1,4 +1,5 @@
 use borsh::{BorshDeserialize, BorshSerialize};
+use wasmlanche_sdk::params;
 use wasmlanche_sdk::{program::Program, public, state_keys, types::Address};
 
 /// The program state keys.
@@ -118,6 +119,13 @@ pub fn get_balance(program: Program, recipient: Address) -> i64 {
         .state()
         .get(StateKey::Balance(recipient))
         .unwrap_or_default()
+}
+
+#[public]
+pub fn external_supply(_: Program, token: Program) -> i64 {
+    token
+        .call_function("get_total_supply", vec![], 10000)
+        .unwrap()
 }
 
 #[cfg(test)]
@@ -257,6 +265,24 @@ mod tests {
                 vec![
                     Param::new(ParamType::Id, program_id.as_ref()),
                     Param::new(ParamType::Key(Key::Ed25519), "alice_key"),
+                ],
+                Some(Require {
+                    result: ResultAssertion {
+                        operator: Operator::NumericEq,
+                        value: "900".into(),
+                    },
+                }),
+            )
+            .expect("failed to get alice balance");
+        assert_eq!(resp.error, None);
+
+        let resp = simulator
+            .read_only::<PlanResponse>(
+                "owner",
+                "external_supply",
+                vec![
+                    Param::new(ParamType::Id, program_id.as_ref()),
+                    Param::new(ParamType::Id, program_id.as_ref()),
                 ],
                 Some(Require {
                     result: ResultAssertion {
