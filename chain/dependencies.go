@@ -19,6 +19,7 @@ import (
 	"github.com/ava-labs/hypersdk/codec"
 	"github.com/ava-labs/hypersdk/executor"
 	"github.com/ava-labs/hypersdk/fees"
+	"github.com/ava-labs/hypersdk/merkle"
 	"github.com/ava-labs/hypersdk/state"
 	"github.com/ava-labs/hypersdk/workers"
 )
@@ -66,7 +67,7 @@ type VM interface {
 	GetVerifyAuth() bool
 
 	IsBootstrapped() bool
-	LastAcceptedBlock() *StatelessBlock
+	LastAcceptedBlock() *merkle.StatelessBlock
 	GetStatelessBlock(context.Context, ids.ID) (*StatelessBlock, error)
 
 	GetVerifyContext(ctx context.Context, blockHeight uint64, parent ids.ID) (VerifyContext, error)
