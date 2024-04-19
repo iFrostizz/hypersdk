@@ -2,8 +2,8 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-use wasmlanche_sdk::{Context, HostPtr, Program};
-use wasmtime::{Instance, Module, Store, TypedFunc};
+use wasmlanche_sdk::{memory::into_bytes, Context, HostPtr, Program};
+use wasmtime::{Instance, Module, Store, TypedFunc, AsContext};
 
 const WASM_TARGET: &str = "wasm32-unknown-unknown";
 const TEST_PKG: &str = "test-crate";
@@ -63,6 +63,71 @@ fn public_functions() {
     assert_eq!(combined_binary_digits, u32::MAX);
 }
 
+#[test]
+fn into_bytes_ub() {
+    let wasm_path = {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let manifest_dir = std::path::Path::new(&manifest_dir);
+        let test_crate_dir = manifest_dir.join("tests").join(TEST_PKG);
+        let target_dir = std::env::var("CARGO_TARGET_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| manifest_dir.join("target"));
+
+        let status = Command::new("cargo")
+            .arg("build")
+            .arg("--package")
+            .arg(TEST_PKG)
+            .arg("--target")
+            .arg(WASM_TARGET)
+            .arg("--profile")
+            .arg(PROFILE)
+            .arg("--target-dir")
+            .arg(&target_dir)
+            .current_dir(&test_crate_dir)
+            .status()
+            .expect("cargo build failed");
+
+        if !status.success() {
+            panic!("cargo build failed");
+        }
+
+        target_dir
+            .join(WASM_TARGET)
+            .join(PROFILE)
+            .join(TEST_PKG.replace('-', "_"))
+            .with_extension("wasm")
+    };
+
+    let mut test_crate = TestCrate::new(wasm_path);
+
+    // valid context ptr
+    let context_ptr = {
+        let program_id: [u8; Program::LEN] = std::array::from_fn(|_| 1);
+        // this is a hack to create a program since the constructor is private
+        let program: Program =
+            borsh::from_slice(&program_id).expect("the program should deserialize");
+        let context = Context { program };
+        let serialized_context = borsh::to_vec(&context).expect("failed to serialize context");
+
+        test_crate.allocate(serialized_context)
+    };
+
+    // assert!(test_crate.always_true(context_ptr));
+    let len = (context_ptr >> 32) as usize;
+    let mut buf: Vec<u8> = (0..len).map(|_| 0).collect();
+    let buf = &mut buf;
+    // let data = test_crate.read_at((context_ptr & !0u32 as i64) as usize, buf);
+    // dbg!(&data);
+    let data = into_bytes(context_ptr);
+    dbg!(&data);
+    // panic!();
+
+    // let result = std::panic::catch_unwind(|| {
+    //     let _ = into_bytes(context_ptr);
+    // });
+    // assert!(result.is_ok());
+}
+
 type AllocParam = i32;
 type AllocReturn = i32;
 
@@ -101,21 +166,54 @@ impl TestCrate {
     }
 
     fn allocate(&mut self, data: Vec<u8>) -> HostPtr {
-        let offset = self
-            .allocate_func
-            .call(&mut self.store, data.len() as i32)
-            .expect("failed to allocate memory");
         let memory = self
             .instance
             .get_memory(&mut self.store, "memory")
             .expect("failed to get memory");
 
+        let alloc_offset = self
+            .allocate_func
+            .call(&mut self.store, data.len() as i32)
+            .expect("failed to allocate memory");
+
         memory
-            .write(&mut self.store, offset as usize, &data)
+            .write(&mut self.store, alloc_offset as usize, &data)
             .expect("failed to write data to memory");
+
+        let base = self.data_ptr();
+        let offset = unsafe { base.offset(alloc_offset.try_into().unwrap()) };
+        // let offset = alloc_offset;
 
         ((data.len() as HostPtr) << 32) | offset as HostPtr
     }
+
+    fn data_ptr(&mut self) -> *const u8 {
+        let memory = self
+            .instance
+            .get_memory(&mut self.store, "memory")
+            .expect("failed to get memory");
+
+        let data = unsafe {memory.data(self.store.as_context())};
+        data.as_ptr()
+    }
+
+    // fn read_at<'a>(&mut self, offset: usize, buf: &'a mut [u8]) -> &'a mut [u8] {
+    //     // let buf = &mut [0; len];
+    //     // let mut buf: Vec<u8> = (0..len).map(|_| 0).collect();
+    //     // let buf = &mut buf;
+    //     // let buf = &mut [0; 32];
+
+    //     let memory = self
+    //         .instance
+    //         .get_memory(&mut self.store, "memory")
+    //         .expect("failed to get memory");
+
+    //     memory
+    //         .read(&mut self.store, offset, buf)
+    //         .expect("failed to write data to memory");
+
+    //     buf
+    // }
 
     fn always_true(&mut self, ptr: HostPtr) -> bool {
         self.always_true_func

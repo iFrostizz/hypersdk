@@ -4,7 +4,7 @@ pub mod params;
 pub mod state;
 pub mod types;
 
-mod memory;
+pub mod memory;
 mod program;
 
 pub use self::{
