@@ -112,10 +112,14 @@ fn into_bytes_ub() {
         test_crate.allocate(serialized_context)
     };
 
+    let base = test_crate.data_ptr();
+    let alloc_offset = context_ptr >> 32;
+    let offset = unsafe { base.offset(alloc_offset.try_into().unwrap()) };
+
     // assert!(test_crate.always_true(context_ptr));
-    let len = (context_ptr >> 32) as usize;
-    let mut buf: Vec<u8> = (0..len).map(|_| 0).collect();
-    let buf = &mut buf;
+    // let len = (context_ptr >> 32) as usize;
+    // let mut buf: Vec<u8> = (0..len).map(|_| 0).collect();
+    // let buf = &mut buf;
     // let data = test_crate.read_at((context_ptr & !0u32 as i64) as usize, buf);
     // dbg!(&data);
     let data = into_bytes(context_ptr);
@@ -166,23 +170,19 @@ impl TestCrate {
     }
 
     fn allocate(&mut self, data: Vec<u8>) -> HostPtr {
+        let offset = self
+            .allocate_func
+            .call(&mut self.store, data.len() as i32)
+            .expect("failed to allocate memory");
+
         let memory = self
             .instance
             .get_memory(&mut self.store, "memory")
             .expect("failed to get memory");
 
-        let alloc_offset = self
-            .allocate_func
-            .call(&mut self.store, data.len() as i32)
-            .expect("failed to allocate memory");
-
         memory
-            .write(&mut self.store, alloc_offset as usize, &data)
+            .write(&mut self.store, offset as usize, &data)
             .expect("failed to write data to memory");
-
-        let base = self.data_ptr();
-        let offset = unsafe { base.offset(alloc_offset.try_into().unwrap()) };
-        // let offset = alloc_offset;
 
         ((data.len() as HostPtr) << 32) | offset as HostPtr
     }
