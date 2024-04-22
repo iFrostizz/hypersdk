@@ -130,3 +130,25 @@ pub unsafe extern "C" fn dealloc(ptr: *mut u8, capacity: usize) {
     let data = Vec::from_raw_parts(ptr, capacity, capacity);
     std::mem::drop(data);
 }
+
+#[cfg(test)]
+mod tests {
+    use std::alloc::{alloc, Layout};
+
+    use crate::memory::split_host_ptr;
+    use crate::HostPtr;
+
+    #[test]
+    fn rejects_oob_ptr() {
+        let layout = Layout::new::<u64>();
+        let ptr = unsafe { alloc(layout) as *mut u64 };
+    }
+
+    #[test]
+    fn split_host_ptr_works() {
+        let len = 10usize;
+        let ptr = 0x123456;
+        let host_ptr: HostPtr = (len << 32) as i64 | ptr;
+        assert_eq!(split_host_ptr(host_ptr), (ptr, len));
+    }
+}
