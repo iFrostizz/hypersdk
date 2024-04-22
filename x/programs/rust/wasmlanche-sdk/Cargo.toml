@@ -12,6 +12,7 @@ thiserror = "1.0.46"
 
 # optional dependencies
 serde_json = { version = "1.0.64", optional = true }
+sptr = "0.3.2"
 
 
 [features]

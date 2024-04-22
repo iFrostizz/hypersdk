@@ -1,9 +1,15 @@
+#![feature(strict_provenance)]
+use sptr::Strict;
+
 use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-use wasmlanche_sdk::{memory::into_bytes, Context, HostPtr, Program};
-use wasmtime::{Instance, Module, Store, TypedFunc, AsContext};
+use wasmlanche_sdk::{
+    memory::{into_bytes, split_host_ptr},
+    Context, HostPtr, Program,
+};
+use wasmtime::{AsContext, Instance, Module, Store, TypedFunc};
 
 const WASM_TARGET: &str = "wasm32-unknown-unknown";
 const TEST_PKG: &str = "test-crate";
@@ -73,23 +79,24 @@ fn into_bytes_ub() {
             .map(PathBuf::from)
             .unwrap_or_else(|_| manifest_dir.join("target"));
 
-        let status = Command::new("cargo")
-            .arg("build")
-            .arg("--package")
-            .arg(TEST_PKG)
-            .arg("--target")
-            .arg(WASM_TARGET)
-            .arg("--profile")
-            .arg(PROFILE)
-            .arg("--target-dir")
-            .arg(&target_dir)
-            .current_dir(&test_crate_dir)
-            .status()
-            .expect("cargo build failed");
+        // let status = Command::new("cargo")
+        //     .arg("+nightly")
+        //     .arg("build")
+        //     .arg("--package")
+        //     .arg(TEST_PKG)
+        //     .arg("--target")
+        //     .arg(WASM_TARGET)
+        //     .arg("--profile")
+        //     .arg(PROFILE)
+        //     .arg("--target-dir")
+        //     .arg(&target_dir)
+        //     .current_dir(&test_crate_dir)
+        //     .status()
+        //     .expect("cargo build failed");
 
-        if !status.success() {
-            panic!("cargo build failed");
-        }
+        // if !status.success() {
+        //     panic!("cargo build failed");
+        // }
 
         target_dir
             .join(WASM_TARGET)
@@ -112,9 +119,12 @@ fn into_bytes_ub() {
         test_crate.allocate(serialized_context)
     };
 
-    let base = test_crate.data_ptr();
-    let alloc_offset = context_ptr >> 32;
+    let base = test_crate.mem_data_ptr();
+    let (alloc_offset, len) = split_host_ptr(context_ptr);
     let offset = unsafe { base.offset(alloc_offset.try_into().unwrap()) };
+    let addr = offset.expose_addr();
+    dbg!(&addr, len);
+    let context_ptr = addr as i64 | (len << 32) as i64;
 
     // assert!(test_crate.always_true(context_ptr));
     // let len = (context_ptr >> 32) as usize;
@@ -122,6 +132,7 @@ fn into_bytes_ub() {
     // let buf = &mut buf;
     // let data = test_crate.read_at((context_ptr & !0u32 as i64) as usize, buf);
     // dbg!(&data);
+    // let context_ptr = offset;
     let data = into_bytes(context_ptr);
     dbg!(&data);
     // panic!();
@@ -187,13 +198,13 @@ impl TestCrate {
         ((data.len() as HostPtr) << 32) | offset as HostPtr
     }
 
-    fn data_ptr(&mut self) -> *const u8 {
+    fn mem_data_ptr(&mut self) -> *const u8 {
         let memory = self
             .instance
             .get_memory(&mut self.store, "memory")
             .expect("failed to get memory");
 
-        let data = unsafe {memory.data(self.store.as_context())};
+        let data = memory.data(self.store.as_context());
         data.as_ptr()
     }
 

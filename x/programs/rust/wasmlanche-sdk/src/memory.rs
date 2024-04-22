@@ -92,10 +92,10 @@ pub fn into_bytes(host_ptr: HostPtr) -> Vec<u8> {
     // grab length from ptrArg
     let (ptr, len) = split_host_ptr(host_ptr);
     dbg!(ptr, len);
-    // let value = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
-    // value.to_vec()
+    let value = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
+    value.to_vec()
 
-    unsafe { std::vec::Vec::from_raw_parts(ptr as *mut u8, len, len) }
+    // unsafe { std::vec::Vec::from_raw_parts(ptr as *mut u8, len, len) }
 }
 
 /* memory functions ------------------------------------------- */
