@@ -75,8 +75,8 @@ func NewRootCmd() *cobra.Command {
 	cmd.SilenceErrors = true
 	cmd.SetHelpCommand(&cobra.Command{Hidden: true})
 
-	// pre-execute the command to pre-parse flags
-	err := cmd.Execute()
+	// pre-parse the command to pre-parse flags
+	err := cmd.ParseFlags(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
